@@ -11,7 +11,10 @@ def get_cos_client():
         endpoint_url=f"https://cos.{region}.myqcloud.com",
         aws_access_key_id=os.getenv("COS_SECRET_ID"),
         aws_secret_access_key=os.getenv("COS_SECRET_KEY"),
-        config=Config(signature_version="s3v4"),
+        config=Config(
+            signature_version="s3v4",
+            s3={"addressing_style": "virtual"},
+        ),
         region_name=region,
     )
 
