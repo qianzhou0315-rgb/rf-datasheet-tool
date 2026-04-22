@@ -8,7 +8,7 @@ from io import BytesIO
 from PIL import Image
 
 client = OpenAI(
-    api_key=os.getenv("MOONSHOT_API_KEY"),
+    api_key=os.getenv("MOONSHOT_API_KEY", "placeholder"),
     base_url="https://api.moonshot.cn/v1",
 )
 
