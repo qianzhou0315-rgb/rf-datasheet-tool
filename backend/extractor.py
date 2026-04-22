@@ -125,8 +125,8 @@ def extract_specs(pdf_bytes: bytes, freq_min: float, freq_max: float) -> dict:
             "text": f"Extracted text from datasheet:\n{text_content[:8000]}"
         })
 
-    # Add page images (up to 8 pages to control cost)
-    for i, img_b64 in enumerate(images[:8]):
+    # Add page images (up to 4 pages to control token usage)
+    for i, img_b64 in enumerate(images[:4]):
         content.append({
             "type": "image_url",
             "image_url": {
@@ -137,7 +137,7 @@ def extract_specs(pdf_bytes: bytes, freq_min: float, freq_max: float) -> dict:
     content.append({"type": "text", "text": prompt})
 
     response = client.chat.completions.create(
-        model="moonshot-v1-8k-vision-preview",
+        model="moonshot-v1-32k-vision-preview",
         max_tokens=2000,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
