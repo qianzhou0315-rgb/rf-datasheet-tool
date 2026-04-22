@@ -95,14 +95,20 @@ async def upload_datasheet(
 
     pdf_bytes = await file.read()
 
-    # Upload to R2
-    stored_name, pdf_url = upload_pdf(pdf_bytes, file.filename)
+    # Upload to COS
+    try:
+        stored_name, pdf_url = upload_pdf(pdf_bytes, file.filename)
+    except Exception as e:
+        raise HTTPException(500, f"Upload failed: {str(e)}")
 
-    # Extract specs with Claude
+    # Extract specs with Kimi
     try:
         result = extract_specs(pdf_bytes, freq_min, freq_max)
     except Exception as e:
-        delete_pdf(stored_name)
+        try:
+            delete_pdf(stored_name)
+        except Exception:
+            pass
         raise HTTPException(500, f"Extraction failed: {str(e)}")
 
     # Save device
