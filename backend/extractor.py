@@ -130,19 +130,63 @@ For switch_logic, only fill if device has control pins (LNA bypass switch, RF sw
 For enable_level, only fill if device has enable/shutdown pin."""
 
 
+CHART_KEYWORDS = [
+    "gain", "noise", "nf", "p1db", "oip3", "iip3", "return loss",
+    "insertion loss", "isolation", "figure", "plot", "typical", "performance",
+    "measurement", "curve", "frequency", "vswr", "s11", "s22", "s21",
+    "增益", "噪声", "实测", "曲线", "特性", "典型"
+]
+
+def _page_has_chart(page) -> bool:
+    """Heuristic: page likely contains performance charts."""
+    # Check if page has significant image area
+    images = page.get_images(full=False)
+    if len(images) >= 2:
+        return True
+    # Check text for chart-related keywords
+    text = (page.get_text() or "").lower()
+    hits = sum(1 for kw in CHART_KEYWORDS if kw in text)
+    return hits >= 2
+
+
 def pdf_to_images(pdf_bytes: bytes, max_pages: int = 15) -> list[str]:
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    images = []
+    total = len(doc)
+
+    # Score each page: chart pages first, then spec/table pages, then others
+    chart_pages = []
+    spec_pages = []
+    other_pages = []
     for i, page in enumerate(doc):
         if i >= max_pages:
             break
-        mat = fitz.Matrix(2.0, 2.0)
+        if _page_has_chart(page):
+            chart_pages.append(i)
+        else:
+            text = (page.get_text() or "").lower()
+            if any(kw in text for kw in ["electrical", "specification", "characteristics", "typical", "table"]):
+                spec_pages.append(i)
+            else:
+                other_pages.append(i)
+
+    # Priority order: chart pages first, then spec pages, then others
+    priority_order = chart_pages + spec_pages + other_pages
+
+    images = []
+    rendered = set()
+    mat = fitz.Matrix(2.0, 2.0)
+    for i in priority_order:
+        if i in rendered:
+            continue
+        page = doc[i]
         pix = page.get_pixmap(matrix=mat)
         img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
         buf = BytesIO()
         img.save(buf, format="PNG")
         b64 = base64.standard_b64encode(buf.getvalue()).decode("utf-8")
         images.append(b64)
+        rendered.add(i)
+
     doc.close()
     return images
 
@@ -285,20 +329,34 @@ def extract_specs(pdf_bytes: bytes) -> dict:
             "text": f"Extracted text from datasheet:\n{text_content[:8000]}"
         })
 
-    for i, img_b64 in enumerate(images[:4]):
+    # Send up to 8 pages, chart pages are prioritized first by pdf_to_images()
+    for i, img_b64 in enumerate(images[:8]):
         content.append({
             "type": "image_url",
             "image_url": {"url": f"data:image/png;base64,{img_b64}"}
         })
 
-    content.append({"type": "text", "text": EXTRACT_PROMPT})
+    chart_reading_hint = """
+IMPORTANT - Reading performance charts/graphs:
+Many datasheets only provide multi-frequency data as graphs/plots, not tables.
+You MUST read these graphs carefully:
+- For each performance curve chart (Gain, NF, P1dB, OIP3, IIP3, S11, S22, Insertion Loss, etc.):
+  * Read values at multiple frequency points across the full operating range
+  * Create one band entry per ~500MHz or per visible data point interval
+  * Use "~" prefix for graph-read values (e.g. "~22.5")
+  * Read both the X-axis (frequency) and Y-axis (parameter value) carefully
+- If the spec table only lists one test frequency but graphs cover the full range,
+  use the graphs to fill in the other frequency bands
+- Typical chart reading intervals: every 500MHz or 1000MHz across the operating band
+"""
+    content.append({"type": "text", "text": chart_reading_hint + "\n\n" + EXTRACT_PROMPT})
 
     last_err = None
     for attempt in range(3):
         try:
             response = client.chat.completions.create(
                 model="moonshot-v1-32k-vision-preview",
-                max_tokens=3000,
+                max_tokens=4000,
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": content},
