@@ -119,7 +119,13 @@ Field usage by device type:
 - Splitter: insertion_loss_db, return_loss_db, isolation_db, amplitude_balance_db, phase_balance_deg, power_handling_dbm, ports
 - RF-Connector: insertion_loss_db, return_loss_db, vswr, impedance_ohm, power_handling_dbm
 
-If the device only has one frequency range, put one entry in bands.
+CRITICAL RULES FOR BANDS:
+1. Each band entry MUST have ALL applicable parameters filled — do NOT leave parameters null just because they were already listed in a previous band.
+2. If the datasheet has a specification table with multiple frequency bands/rows, create one band entry per row and copy the corresponding parameter values into each band.
+3. If a parameter value is the same across all bands (e.g. Vcc=3.3V for all bands), repeat it in every band entry.
+4. If a parameter varies by band (e.g. NF=0.8dB at Band1, NF=1.0dB at Band2), put the correct value in each band.
+5. Never leave a band entry with only freq_min_mhz and freq_max_mhz filled — always populate all relevant parameters.
+
 For switch_logic, only fill if device has control pins (LNA bypass switch, RF switch, or FEM TX/RX switch).
 For enable_level, only fill if device has enable/shutdown pin."""
 
