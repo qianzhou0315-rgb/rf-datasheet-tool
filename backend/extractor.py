@@ -147,6 +147,117 @@ def pdf_to_images(pdf_bytes: bytes, max_pages: int = 15) -> list[str]:
     return images
 
 
+import re
+
+FREQ_PATTERN = re.compile(
+    r'(\d+\.?\d*)\s*[~\-–to]+\s*(\d+\.?\d*)\s*(GHz|MHz|ghz|mhz)', re.IGNORECASE
+)
+
+def _parse_freq_mhz(val: str) -> float:
+    """Convert '2.4GHz' or '2400MHz' to MHz float."""
+    m = re.match(r'(\d+\.?\d*)\s*(GHz|MHz)?', val.strip(), re.IGNORECASE)
+    if not m:
+        return 0.0
+    v = float(m.group(1))
+    unit = (m.group(2) or 'MHz').upper()
+    return v * 1000 if unit == 'GHZ' else v
+
+
+def _normalize_cell(c) -> str:
+    if c is None:
+        return ''
+    return ' '.join(str(c).split())
+
+
+def _restructure_spec_table(table: list[list]) -> str:
+    """
+    Detect "param × freq-band" style tables and convert to per-band rows.
+    E.g.:
+      Gain | 0.6~1GHz: 23.5 | 1.1~1.6GHz: 22 | ...
+      NF   | 0.6~1GHz: 0.45 | 1.1~1.6GHz: 0.45 | ...
+    → outputs structured text that AI can parse band-by-band.
+    """
+    if not table or len(table) < 2:
+        return ''
+
+    rows = [[_normalize_cell(c) for c in row] for row in table]
+
+    # Detect freq-band columns: header row cells matching freq pattern
+    header = rows[0]
+    freq_col_indices = []
+    freq_labels = []
+    for ci, cell in enumerate(header):
+        m = FREQ_PATTERN.search(cell)
+        if m:
+            freq_col_indices.append(ci)
+            freq_labels.append(cell)
+
+    # Also check second row for freq labels (some tables have freq in col 1)
+    if not freq_col_indices and len(rows) > 1:
+        for ri, row in enumerate(rows[1:], 1):
+            for ci, cell in enumerate(row):
+                if ci == 0:
+                    continue
+                if FREQ_PATTERN.search(cell):
+                    freq_col_indices.append(ci)
+                    freq_labels.append(cell)
+            if freq_col_indices:
+                break
+
+    # Detect "param in col0, freq in col1, value in col2+" pattern
+    # (vertical style: each data row is one freq range for one param)
+    param_col = 0
+    freq_col = -1
+    value_col = -1
+    if not freq_col_indices:
+        for ri, row in enumerate(rows):
+            for ci, cell in enumerate(row):
+                if ci > 0 and FREQ_PATTERN.search(cell):
+                    freq_col = ci
+                    value_col = ci + 1 if ci + 1 < len(row) else ci
+                    break
+            if freq_col >= 0:
+                break
+
+    # --- Case 1: freq labels in header columns ---
+    if freq_col_indices:
+        lines = ['[Spec Table - per band]:']
+        param_name = ''
+        for row in rows[1:]:
+            if not any(row):
+                continue
+            if row[0]:
+                param_name = row[0]
+            for ci, label in zip(freq_col_indices, freq_labels):
+                val = row[ci] if ci < len(row) else ''
+                if val and val not in ('-', '—', ''):
+                    lines.append(f'  {label}: {param_name} = {val}')
+        return '\n'.join(lines)
+
+    # --- Case 2: vertical style (param | freq_range | value) ---
+    if freq_col >= 0:
+        lines = ['[Spec Table - vertical style]:']
+        param_name = ''
+        for row in rows:
+            if not any(row):
+                continue
+            if row[param_col]:
+                param_name = row[param_col]
+            freq_str = row[freq_col] if freq_col < len(row) else ''
+            val_str = row[value_col] if value_col < len(row) else ''
+            if FREQ_PATTERN.search(freq_str) and val_str and val_str not in ('-', '—'):
+                lines.append(f'  {freq_str}: {param_name} = {val_str}')
+        return '\n'.join(lines)
+
+    # --- Fallback: plain join ---
+    lines = []
+    for row in rows:
+        cleaned = [c for c in row if c]
+        if cleaned:
+            lines.append(' | '.join(cleaned))
+    return '\n'.join(lines)
+
+
 def extract_text_from_pdf(pdf_bytes: bytes) -> str:
     text_parts = []
     with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
@@ -156,9 +267,9 @@ def extract_text_from_pdf(pdf_bytes: bytes) -> str:
                 text_parts.append(text)
             tables = page.extract_tables()
             for table in tables:
-                for row in table:
-                    if row:
-                        text_parts.append(" | ".join(str(c) for c in row if c))
+                restructured = _restructure_spec_table(table)
+                if restructured:
+                    text_parts.append(restructured)
     return "\n".join(text_parts)
 
 

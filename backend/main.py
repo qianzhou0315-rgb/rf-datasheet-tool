@@ -132,6 +132,32 @@ def get_device(device_id: int, db: Session = Depends(get_db)):
     return _device_to_dict(device)
 
 
+@app.put("/api/devices/{device_id}")
+def update_device(device_id: int, body: dict, db: Session = Depends(get_db)):
+    """Partial update: accepts any subset of device fields including bands."""
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(404, "Device not found")
+    allowed = {"name", "manufacturer", "device_type", "package", "package_size",
+               "pin_count", "enable_level", "switch_logic", "bands",
+               "freq_min_mhz", "freq_max_mhz"}
+    for key, val in body.items():
+        if key in allowed:
+            setattr(device, key, val)
+    # Recalculate overall freq range from bands if bands updated
+    if "bands" in body and body["bands"]:
+        bands = body["bands"]
+        mins = [b.get("freq_min_mhz") for b in bands if b.get("freq_min_mhz")]
+        maxs = [b.get("freq_max_mhz") for b in bands if b.get("freq_max_mhz")]
+        if mins:
+            device.freq_min_mhz = min(mins)
+        if maxs:
+            device.freq_max_mhz = max(maxs)
+    db.commit()
+    db.refresh(device)
+    return _device_to_dict(device)
+
+
 @app.delete("/api/devices/{device_id}")
 def delete_device(device_id: int, db: Session = Depends(get_db)):
     device = db.query(Device).filter(Device.id == device_id).first()

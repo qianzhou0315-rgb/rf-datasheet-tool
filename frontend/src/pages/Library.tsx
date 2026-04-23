@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { fetchDevices, deleteDevice, exportDevices, downloadDatasheet, getPreviewUrl, Device, Band, SwitchLogic, DeviceType } from "../api";
+import DeviceEditModal from "./DeviceEditModal";
 
 const DEVICE_TYPES: (DeviceType | "全部")[] = ["全部", "PA", "LNA", "Filter", "Switch", "FEM", "Balun", "Splitter", "RF-Connector"];
 
@@ -187,14 +188,16 @@ function PdfPreviewModal({ url, name, onClose }: { url: string; name: string; on
   );
 }
 
-function DeviceTable({ type, devices, onDelete, freqMin, freqMax }: {
+function DeviceTable({ type, devices, onDelete, onUpdated, freqMin, freqMax }: {
   type: string;
   devices: Device[];
   onDelete: (id: number) => void;
+  onUpdated: (d: Device) => void;
   freqMin?: number;
   freqMax?: number;
 }) {
   const [preview, setPreview] = useState<{ id: number; name: string } | null>(null);
+  const [editing, setEditing] = useState<Device | null>(null);
   const cols = TYPE_COLS[type] || [];
   if (devices.length === 0)
     return <p className="text-gray-400 text-sm py-4">暂无 {type} 器件</p>;
@@ -218,6 +221,13 @@ function DeviceTable({ type, devices, onDelete, freqMin, freqMax }: {
           url={getPreviewUrl(preview.id)}
           name={preview.name}
           onClose={() => setPreview(null)}
+        />
+      )}
+      {editing && (
+        <DeviceEditModal
+          device={editing}
+          onClose={() => setEditing(null)}
+          onSaved={(d) => { onUpdated(d); setEditing(null); }}
         />
       )}
       <div className="overflow-x-auto">
@@ -292,7 +302,8 @@ function DeviceTable({ type, devices, onDelete, freqMin, freqMax }: {
                           ↓
                         </button>
                       </td>
-                      <td rowSpan={bands.length} className="px-2 py-2 text-right border-l">
+                      <td rowSpan={bands.length} className="px-2 py-2 text-right border-l whitespace-nowrap">
+                        <button onClick={() => setEditing(d)} className="text-xs text-blue-400 hover:text-blue-600 mr-2">编辑</button>
                         <button onClick={() => onDelete(d.id)} className="text-xs text-red-400 hover:text-red-600">删除</button>
                       </td>
                     </>
@@ -335,6 +346,10 @@ export default function LibraryPage() {
 
   const handleDelete = (id: number) => {
     if (confirm("确定删除该器件？")) doDelete(id);
+  };
+
+  const handleUpdated = (_d: Device) => {
+    qc.invalidateQueries({ queryKey: ["devices"] });
   };
 
   const applyPreset = (label: string, min: number, max: number) => {
@@ -452,6 +467,7 @@ export default function LibraryPage() {
                 type={type}
                 devices={devs}
                 onDelete={handleDelete}
+                onUpdated={handleUpdated}
                 freqMin={freqMin ? Number(freqMin) : undefined}
                 freqMax={freqMax ? Number(freqMax) : undefined}
               />

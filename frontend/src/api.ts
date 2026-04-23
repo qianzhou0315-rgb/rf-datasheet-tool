@@ -94,6 +94,11 @@ export const deleteDevice = async (id: number): Promise<void> => {
   await api.delete(`/devices/${id}`);
 };
 
+export const updateDevice = async (id: number, body: Partial<Device> & { bands?: Band[] }): Promise<Device> => {
+  const { data } = await api.put(`/devices/${id}`, body);
+  return data;
+};
+
 export const downloadDatasheet = (id: number, name: string) => {
   const base = (import.meta.env.VITE_API_URL || "") + `/api/devices/${id}/datasheet`;
   const a = document.createElement("a");
