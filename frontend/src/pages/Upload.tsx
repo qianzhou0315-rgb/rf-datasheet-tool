@@ -4,46 +4,27 @@ import toast from "react-hot-toast";
 import { uploadDatasheet } from "../api";
 import { useQueryClient } from "@tanstack/react-query";
 
-const PRESET_BANDS = [
-  { label: "n77 (3300-4200 MHz)", min: 3300, max: 4200 },
-  { label: "n78 (3300-3800 MHz)", min: 3300, max: 3800 },
-  { label: "n79 (4400-5000 MHz)", min: 4400, max: 5000 },
-  { label: "n41 (2496-2690 MHz)", min: 2496, max: 2690 },
-  { label: "n28 (700-960 MHz)", min: 700, max: 960 },
-  { label: "n1 (1920-2170 MHz)", min: 1920, max: 2170 },
-];
-
 export default function UploadPage() {
   const qc = useQueryClient();
-  const [freqMin, setFreqMin] = useState(3300);
-  const [freqMax, setFreqMax] = useState(3800);
   const [queue, setQueue] = useState<File[]>([]);
   const [processing, setProcessing] = useState(false);
   const [results, setResults] = useState<
     { name: string; status: "pending" | "ok" | "error"; msg?: string }[]
   >([]);
 
-  const onDrop = useCallback(
-    (accepted: File[]) => {
-      setQueue((q) => [...q, ...accepted]);
-      setResults((r) => [
-        ...r,
-        ...accepted.map((f) => ({ name: f.name, status: "pending" as const })),
-      ]);
-    },
-    []
-  );
+  const onDrop = useCallback((accepted: File[]) => {
+    setQueue((q) => [...q, ...accepted]);
+    setResults((r) => [
+      ...r,
+      ...accepted.map((f) => ({ name: f.name, status: "pending" as const })),
+    ]);
+  }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: { "application/pdf": [".pdf"] },
     disabled: processing,
   });
-
-  const applyPreset = (min: number, max: number) => {
-    setFreqMin(min);
-    setFreqMax(max);
-  };
 
   const startUpload = async () => {
     if (queue.length === 0) return;
@@ -54,7 +35,7 @@ export default function UploadPage() {
         r.map((x, idx) => (idx === i ? { ...x, status: "pending" } : x))
       );
       try {
-        const res = await uploadDatasheet(file, freqMin, freqMax);
+        const res = await uploadDatasheet(file);
         setResults((r) =>
           r.map((x, idx) =>
             idx === i
@@ -63,12 +44,9 @@ export default function UploadPage() {
           )
         );
       } catch (e: unknown) {
-        const msg =
-          e instanceof Error ? e.message : "失败";
+        const msg = e instanceof Error ? e.message : "失败";
         setResults((r) =>
-          r.map((x, idx) =>
-            idx === i ? { ...x, status: "error", msg } : x
-          )
+          r.map((x, idx) => (idx === i ? { ...x, status: "error", msg } : x))
         );
       }
     }
@@ -86,49 +64,13 @@ export default function UploadPage() {
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <h1 className="text-2xl font-bold text-gray-800">上传 Datasheet</h1>
+      <p className="text-sm text-gray-500">
+        直接上传 PDF，AI 自动识别器件类型并提取全频段参数。
+      </p>
 
-      {/* Frequency Band */}
-      <div className="bg-white rounded-xl shadow p-5 space-y-3">
-        <h2 className="font-semibold text-gray-700">目标频段</h2>
-        <div className="flex flex-wrap gap-2">
-          {PRESET_BANDS.map((b) => (
-            <button
-              key={b.label}
-              onClick={() => applyPreset(b.min, b.max)}
-              className={`text-xs px-3 py-1.5 rounded-full border transition ${
-                freqMin === b.min && freqMax === b.max
-                  ? "bg-blue-600 text-white border-blue-600"
-                  : "border-gray-300 hover:border-blue-400 text-gray-600"
-              }`}
-            >
-              {b.label}
-            </button>
-          ))}
-        </div>
-        <div className="flex gap-3 items-center">
-          <input
-            type="number"
-            value={freqMin}
-            onChange={(e) => setFreqMin(Number(e.target.value))}
-            className="w-32 border rounded px-3 py-1.5 text-sm"
-            placeholder="Min MHz"
-          />
-          <span className="text-gray-400">—</span>
-          <input
-            type="number"
-            value={freqMax}
-            onChange={(e) => setFreqMax(Number(e.target.value))}
-            className="w-32 border rounded px-3 py-1.5 text-sm"
-            placeholder="Max MHz"
-          />
-          <span className="text-sm text-gray-500">MHz</span>
-        </div>
-      </div>
-
-      {/* Drop Zone */}
       <div
         {...getRootProps()}
-        className={`border-2 border-dashed rounded-xl p-10 text-center cursor-pointer transition ${
+        className={`border-2 border-dashed rounded-xl p-16 text-center cursor-pointer transition ${
           isDragActive
             ? "border-blue-500 bg-blue-50"
             : "border-gray-300 hover:border-blue-400 bg-white"
@@ -142,7 +84,6 @@ export default function UploadPage() {
         </p>
       </div>
 
-      {/* Queue */}
       {results.length > 0 && (
         <div className="bg-white rounded-xl shadow p-5 space-y-2">
           <div className="flex justify-between items-center">

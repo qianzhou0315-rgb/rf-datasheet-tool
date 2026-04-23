@@ -4,6 +4,38 @@ const api = axios.create({
   baseURL: (import.meta.env.VITE_API_URL || "") + "/api",
 });
 
+export interface Band {
+  freq_min_mhz: number;
+  freq_max_mhz: number;
+  band_name?: string;
+  vcc_v?: string;
+  icc_ma?: string;
+  gain_db?: string;
+  gain_min_db?: string;
+  p1db_dbm?: string;
+  psat_dbm?: string;
+  pae_percent?: string;
+  nf_db?: string;
+  nf_max_db?: string;
+  iip3_dbm?: string;
+  op1db_dbm?: string;
+  oip3_dbm?: string;
+  s11_db?: string;
+  s22_db?: string;
+  insertion_loss_db?: string;
+  insertion_loss_max_db?: string;
+  rejection_db?: string;
+  return_loss_db?: string;
+  isolation_db?: string;
+  isolation_min_db?: string;
+  ports?: string;
+}
+
+export interface SwitchLogic {
+  ctrl: string;
+  path: string;
+}
+
 export interface Device {
   id: number;
   name: string;
@@ -11,9 +43,13 @@ export interface Device {
   device_type: "PA" | "LNA" | "Filter" | "Switch";
   freq_min_mhz: number;
   freq_max_mhz: number;
+  package?: string;
+  pin_count?: number;
+  enable_level?: string;
+  switch_logic?: SwitchLogic[];
+  bands: Band[];
   pdf_url: string;
   created_at: string;
-  specs: Record<string, number | string | null>;
 }
 
 export const fetchDevices = async (params?: {
@@ -26,25 +62,27 @@ export const fetchDevices = async (params?: {
 };
 
 export const uploadDatasheet = async (
-  file: File,
-  freq_min: number,
-  freq_max: number
+  file: File
 ): Promise<{ id: number; name: string; device_type: string }> => {
   const form = new FormData();
   form.append("file", file);
-  form.append("freq_min", String(freq_min));
-  form.append("freq_max", String(freq_max));
   const { data } = await api.post("/upload", form);
   return data;
 };
 
-export const updateSpecs = async (
-  id: number,
-  specs: Record<string, string | number | null>
-): Promise<void> => {
-  await api.put(`/devices/${id}/specs`, specs);
-};
-
 export const deleteDevice = async (id: number): Promise<void> => {
   await api.delete(`/devices/${id}`);
+};
+
+export const exportDevices = (params?: {
+  device_type?: string;
+  freq_min?: number;
+  freq_max?: number;
+}) => {
+  const base = (import.meta.env.VITE_API_URL || "") + "/api/export";
+  const p = new URLSearchParams();
+  if (params?.device_type) p.set("device_type", params.device_type);
+  if (params?.freq_min != null) p.set("freq_min", String(params.freq_min));
+  if (params?.freq_max != null) p.set("freq_max", String(params.freq_max));
+  window.open(`${base}?${p.toString()}`, "_blank");
 };
