@@ -187,15 +187,26 @@ function PdfPreviewModal({ url, name, onClose }: { url: string; name: string; on
   );
 }
 
-function DeviceTable({ type, devices, onDelete }: {
+function DeviceTable({ type, devices, onDelete, freqMin, freqMax }: {
   type: string;
   devices: Device[];
   onDelete: (id: number) => void;
+  freqMin?: number;
+  freqMax?: number;
 }) {
   const [preview, setPreview] = useState<{ id: number; name: string } | null>(null);
   const cols = TYPE_COLS[type] || [];
   if (devices.length === 0)
     return <p className="text-gray-400 text-sm py-4">暂无 {type} 器件</p>;
+
+  const bandOverlaps = (band: Band) => {
+    if (freqMin == null && freqMax == null) return true;
+    const bMin = band.freq_min_mhz ?? 0;
+    const bMax = band.freq_max_mhz ?? Infinity;
+    if (freqMin != null && bMax < freqMin) return false;
+    if (freqMax != null && bMin > freqMax) return false;
+    return true;
+  };
 
   const showEnable = HAS_ENABLE.has(type);
   const showSwitch = HAS_SWITCH_LOGIC.has(type);
@@ -233,7 +244,9 @@ function DeviceTable({ type, devices, onDelete }: {
           </thead>
           <tbody>
             {devices.map((d) => {
-              const bands = d.bands && d.bands.length > 0 ? d.bands : [{ freq_min_mhz: d.freq_min_mhz, freq_max_mhz: d.freq_max_mhz } as Band];
+              const allBands = d.bands && d.bands.length > 0 ? d.bands : [{ freq_min_mhz: d.freq_min_mhz, freq_max_mhz: d.freq_max_mhz } as Band];
+              const bands = allBands.filter(bandOverlaps);
+              if (bands.length === 0) return null;
               const switchStr = d.switch_logic
                 ? d.switch_logic.map((s: SwitchLogic) => `${s.ctrl}→${s.path}`).join("; ")
                 : "—";
@@ -435,7 +448,13 @@ export default function LibraryPage() {
                   <span className="ml-2 text-xs text-gray-400 font-normal">{devs.length} 个</span>
                 </h2>
               )}
-              <DeviceTable type={type} devices={devs} onDelete={handleDelete} />
+              <DeviceTable
+                type={type}
+                devices={devs}
+                onDelete={handleDelete}
+                freqMin={freqMin ? Number(freqMin) : undefined}
+                freqMax={freqMax ? Number(freqMax) : undefined}
+              />
             </div>
           ))}
         </div>
