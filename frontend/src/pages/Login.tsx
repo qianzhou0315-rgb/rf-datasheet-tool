@@ -1,17 +1,22 @@
 import { useState, FormEvent } from "react";
 
-const CREDENTIALS = { username: "TRX", password: "productsystemTRX" };
+const USERS: Record<string, { password: string; role: string }> = {
+  TRX: { password: "productsystemTRX", role: "viewer" },
+  admin: { password: "adminTRX", role: "admin" },
+};
 
-export default function LoginPage({ onLogin }: { onLogin: () => void }) {
+export default function LoginPage({ onLogin }: { onLogin: (role: string) => void }) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    if (username === CREDENTIALS.username && password === CREDENTIALS.password) {
+    const user = USERS[username];
+    if (user && user.password === password) {
       localStorage.setItem("rf_auth", "1");
-      onLogin();
+      localStorage.setItem("rf_role", user.role);
+      onLogin(user.role);
     } else {
       setError("用户名或密码错误");
     }
