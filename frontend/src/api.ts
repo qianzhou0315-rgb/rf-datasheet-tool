@@ -63,6 +63,7 @@ export interface Device {
   freq_min_mhz: number;
   freq_max_mhz: number;
   package?: string;
+  package_size?: string;
   pin_count?: number;
   enable_level?: string;
   switch_logic?: SwitchLogic[];
@@ -100,6 +101,9 @@ export const downloadDatasheet = (id: number, name: string) => {
   a.download = `${name}.pdf`;
   a.click();
 };
+
+export const getPreviewUrl = (id: number) =>
+  (import.meta.env.VITE_API_URL || "") + `/api/devices/${id}/preview`;
 
 export const exportDevices = (params?: {
   device_type?: string;

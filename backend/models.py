@@ -13,6 +13,7 @@ class Device(Base):
     freq_min_mhz = Column(Float)   # overall min freq
     freq_max_mhz = Column(Float)   # overall max freq
     package = Column(String(100))  # e.g. QFN-16
+    package_size = Column(String(100))  # e.g. 3.0x3.0mm
     pin_count = Column(Integer)
     enable_level = Column(String(50))   # e.g. "Active High", "Active Low"
     switch_logic = Column(JSON)    # e.g. [{"ctrl": "V_ctrl=0", "path": "RF1-RF3"}]

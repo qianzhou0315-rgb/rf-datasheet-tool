@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import { fetchDevices, deleteDevice, exportDevices, downloadDatasheet, Device, Band, SwitchLogic, DeviceType } from "../api";
+import { fetchDevices, deleteDevice, exportDevices, downloadDatasheet, getPreviewUrl, Device, Band, SwitchLogic, DeviceType } from "../api";
 
 const DEVICE_TYPES: (DeviceType | "全部")[] = ["全部", "PA", "LNA", "Filter", "Switch", "FEM", "Balun", "Splitter", "RF-Connector"];
 
@@ -65,6 +65,7 @@ function BandCols({ band, type }: { band: Band; type: string }) {
       <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.isolation_db)}</td>
       <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.isolation_min_db)}</td>
       <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.p1db_dbm)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.power_handling_dbm)}</td>
       <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.ports)}</td>
     </>
   );
@@ -134,7 +135,7 @@ const TYPE_COLS: Record<string, { label: string; unit?: string }[]> = {
     { label: "Vcc", unit: "V" },
     { label: "IL Typ", unit: "dB" }, { label: "IL Max", unit: "dB" },
     { label: "隔离Typ", unit: "dB" }, { label: "隔离Min", unit: "dB" },
-    { label: "P1dB", unit: "dBm" }, { label: "端口" },
+    { label: "P1dB", unit: "dBm" }, { label: "功率容量", unit: "dBm" }, { label: "端口" },
   ],
   FEM: [
     { label: "Vcc", unit: "V" }, { label: "Icc", unit: "mA" },
@@ -160,11 +161,38 @@ const TYPE_COLS: Record<string, { label: string; unit?: string }[]> = {
 const HAS_ENABLE = new Set(["PA", "LNA", "Switch", "FEM"]);
 const HAS_SWITCH_LOGIC = new Set(["LNA", "Switch", "FEM"]);
 
+function PdfPreviewModal({ url, name, onClose }: { url: string; name: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+      <div
+        className="bg-white rounded-xl shadow-2xl flex flex-col"
+        style={{ width: "90vw", height: "90vh" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b">
+          <span className="font-semibold text-gray-700 truncate">{name}</span>
+          <div className="flex gap-3 items-center">
+            <button
+              className="text-sm text-blue-600 hover:underline"
+              onClick={(e) => { e.stopPropagation(); const a = document.createElement("a"); a.href = url.replace("/preview", "/datasheet"); a.download = name + ".pdf"; a.click(); }}
+            >
+              ↓ 下载
+            </button>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl font-bold leading-none">×</button>
+          </div>
+        </div>
+        <iframe src={url} className="flex-1 w-full rounded-b-xl" title={name} />
+      </div>
+    </div>
+  );
+}
+
 function DeviceTable({ type, devices, onDelete }: {
   type: string;
   devices: Device[];
   onDelete: (id: number) => void;
 }) {
+  const [preview, setPreview] = useState<{ id: number; name: string } | null>(null);
   const cols = TYPE_COLS[type] || [];
   if (devices.length === 0)
     return <p className="text-gray-400 text-sm py-4">暂无 {type} 器件</p>;
@@ -173,78 +201,96 @@ function DeviceTable({ type, devices, onDelete }: {
   const showSwitch = HAS_SWITCH_LOGIC.has(type);
 
   return (
-    <div className="overflow-x-auto">
-      <table className="min-w-full text-sm border-collapse">
-        <thead>
-          <tr className="bg-gray-100">
-            <th className="text-left px-2 py-2 font-semibold text-gray-600 border-b whitespace-nowrap">型号</th>
-            <th className="text-left px-2 py-2 font-semibold text-gray-600 border-b whitespace-nowrap">厂家</th>
-            <th className="text-left px-2 py-2 font-semibold text-gray-600 border-b whitespace-nowrap">封装</th>
-            <th className="text-right px-2 py-2 font-semibold text-gray-600 border-b whitespace-nowrap">Pin</th>
-            <th className="text-left px-2 py-2 font-semibold text-gray-600 border-b whitespace-nowrap">频段(MHz)</th>
-            <th className="text-left px-2 py-2 font-semibold text-gray-600 border-b whitespace-nowrap">频段名</th>
-            {cols.map((c, i) => (
-              <th key={i} className="text-right px-2 py-2 font-semibold text-gray-600 border-b whitespace-nowrap">
-                {c.label}{c.unit && <span className="text-gray-400 font-normal ml-1">({c.unit})</span>}
-              </th>
-            ))}
-            {showEnable && <th className="text-left px-2 py-2 font-semibold text-gray-600 border-b whitespace-nowrap">使能</th>}
-            {showSwitch && <th className="text-left px-2 py-2 font-semibold text-gray-600 border-b whitespace-nowrap">开关逻辑</th>}
-            <th className="px-2 py-2 border-b whitespace-nowrap">Datasheet</th>
-            <th className="px-2 py-2 border-b" />
-          </tr>
-        </thead>
-        <tbody>
-          {devices.map((d) => {
-            const bands = d.bands && d.bands.length > 0 ? d.bands : [{ freq_min_mhz: d.freq_min_mhz, freq_max_mhz: d.freq_max_mhz } as Band];
-            const switchStr = d.switch_logic
-              ? d.switch_logic.map((s: SwitchLogic) => `${s.ctrl}→${s.path}`).join("; ")
-              : "—";
-            return bands.map((band, bi) => (
-              <tr key={`${d.id}-${bi}`} className={`hover:bg-blue-50 transition border-b ${bi > 0 ? "bg-gray-50" : ""}`}>
-                {bi === 0 && (
-                  <>
-                    <td rowSpan={bands.length} className="px-2 py-2 font-medium text-blue-700 whitespace-nowrap border-r">
-                      {d.name}
-                    </td>
-                    <td rowSpan={bands.length} className="px-2 py-2 text-gray-600 whitespace-nowrap border-r">{fmt(d.manufacturer)}</td>
-                    <td rowSpan={bands.length} className="px-2 py-2 text-gray-600 whitespace-nowrap border-r">{fmt(d.package)}</td>
-                    <td rowSpan={bands.length} className="px-2 py-2 text-right text-gray-600 whitespace-nowrap border-r">{fmt(d.pin_count)}</td>
-                  </>
-                )}
-                <td className="px-2 py-2 text-gray-600 whitespace-nowrap">
-                  {band.freq_min_mhz}–{band.freq_max_mhz}
-                </td>
-                <td className="px-2 py-2 text-gray-500 whitespace-nowrap text-xs">{fmt(band.band_name)}</td>
-                <BandCols band={band} type={type} />
-                {bi === 0 && (
-                  <>
-                    {showEnable && (
-                      <td rowSpan={bands.length} className="px-2 py-2 text-gray-600 whitespace-nowrap text-xs border-l">{fmt(d.enable_level)}</td>
-                    )}
-                    {showSwitch && (
-                      <td rowSpan={bands.length} className="px-2 py-2 text-gray-600 text-xs border-l max-w-xs">{switchStr}</td>
-                    )}
-                    <td rowSpan={bands.length} className="px-2 py-2 text-center border-l">
-                      <button
-                        onClick={() => downloadDatasheet(d.id, d.name)}
-                        className="text-xs text-blue-500 hover:text-blue-700"
-                        title="下载原始 PDF"
-                      >
-                        ↓ PDF
-                      </button>
-                    </td>
-                    <td rowSpan={bands.length} className="px-2 py-2 text-right border-l">
-                      <button onClick={() => onDelete(d.id)} className="text-xs text-red-400 hover:text-red-600">删除</button>
-                    </td>
-                  </>
-                )}
-              </tr>
-            ));
-          })}
-        </tbody>
-      </table>
-    </div>
+    <>
+      {preview && (
+        <PdfPreviewModal
+          url={getPreviewUrl(preview.id)}
+          name={preview.name}
+          onClose={() => setPreview(null)}
+        />
+      )}
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-sm border-collapse">
+          <thead>
+            <tr className="bg-gray-100">
+              <th className="text-left px-2 py-2 font-semibold text-gray-600 border-b whitespace-nowrap">型号</th>
+              <th className="text-left px-2 py-2 font-semibold text-gray-600 border-b whitespace-nowrap">厂家</th>
+              <th className="text-left px-2 py-2 font-semibold text-gray-600 border-b whitespace-nowrap">封装</th>
+              <th className="text-left px-2 py-2 font-semibold text-gray-600 border-b whitespace-nowrap">封装尺寸</th>
+              <th className="text-right px-2 py-2 font-semibold text-gray-600 border-b whitespace-nowrap">Pin</th>
+              <th className="text-left px-2 py-2 font-semibold text-gray-600 border-b whitespace-nowrap">频段(MHz)</th>
+              <th className="text-left px-2 py-2 font-semibold text-gray-600 border-b whitespace-nowrap">频段名</th>
+              {cols.map((c, i) => (
+                <th key={i} className="text-right px-2 py-2 font-semibold text-gray-600 border-b whitespace-nowrap">
+                  {c.label}{c.unit && <span className="text-gray-400 font-normal ml-1">({c.unit})</span>}
+                </th>
+              ))}
+              {showEnable && <th className="text-left px-2 py-2 font-semibold text-gray-600 border-b whitespace-nowrap">使能</th>}
+              {showSwitch && <th className="text-left px-2 py-2 font-semibold text-gray-600 border-b whitespace-nowrap">开关逻辑</th>}
+              <th className="px-2 py-2 border-b whitespace-nowrap">Datasheet</th>
+              <th className="px-2 py-2 border-b" />
+            </tr>
+          </thead>
+          <tbody>
+            {devices.map((d) => {
+              const bands = d.bands && d.bands.length > 0 ? d.bands : [{ freq_min_mhz: d.freq_min_mhz, freq_max_mhz: d.freq_max_mhz } as Band];
+              const switchStr = d.switch_logic
+                ? d.switch_logic.map((s: SwitchLogic) => `${s.ctrl}→${s.path}`).join("; ")
+                : "—";
+              return bands.map((band, bi) => (
+                <tr key={`${d.id}-${bi}`} className={`hover:bg-blue-50 transition border-b ${bi > 0 ? "bg-gray-50" : ""}`}>
+                  {bi === 0 && (
+                    <>
+                      <td rowSpan={bands.length} className="px-2 py-2 font-medium text-blue-700 whitespace-nowrap border-r">
+                        {d.name}
+                      </td>
+                      <td rowSpan={bands.length} className="px-2 py-2 text-gray-600 whitespace-nowrap border-r">{fmt(d.manufacturer)}</td>
+                      <td rowSpan={bands.length} className="px-2 py-2 text-gray-600 whitespace-nowrap border-r">{fmt(d.package)}</td>
+                      <td rowSpan={bands.length} className="px-2 py-2 text-gray-500 text-xs whitespace-nowrap border-r">{fmt(d.package_size)}</td>
+                      <td rowSpan={bands.length} className="px-2 py-2 text-right text-gray-600 whitespace-nowrap border-r">{fmt(d.pin_count)}</td>
+                    </>
+                  )}
+                  <td className="px-2 py-2 text-gray-600 whitespace-nowrap">
+                    {band.freq_min_mhz}–{band.freq_max_mhz}
+                  </td>
+                  <td className="px-2 py-2 text-gray-500 whitespace-nowrap text-xs">{fmt(band.band_name)}</td>
+                  <BandCols band={band} type={type} />
+                  {bi === 0 && (
+                    <>
+                      {showEnable && (
+                        <td rowSpan={bands.length} className="px-2 py-2 text-gray-600 whitespace-nowrap text-xs border-l">{fmt(d.enable_level)}</td>
+                      )}
+                      {showSwitch && (
+                        <td rowSpan={bands.length} className="px-2 py-2 text-gray-600 text-xs border-l max-w-xs">{switchStr}</td>
+                      )}
+                      <td rowSpan={bands.length} className="px-2 py-2 text-center border-l">
+                        <button
+                          onClick={() => setPreview({ id: d.id, name: d.name })}
+                          className="text-xs text-blue-500 hover:text-blue-700 mr-2"
+                          title="在线预览 PDF"
+                        >
+                          预览
+                        </button>
+                        <button
+                          onClick={() => downloadDatasheet(d.id, d.name)}
+                          className="text-xs text-gray-500 hover:text-gray-700"
+                          title="下载 PDF"
+                        >
+                          ↓
+                        </button>
+                      </td>
+                      <td rowSpan={bands.length} className="px-2 py-2 text-right border-l">
+                        <button onClick={() => onDelete(d.id)} className="text-xs text-red-400 hover:text-red-600">删除</button>
+                      </td>
+                    </>
+                  )}
+                </tr>
+              ));
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 

@@ -47,6 +47,7 @@ Return JSON in this exact format:
   "manufacturer": "...",
   "device_type": "PA|LNA|Filter|Switch|FEM|Balun|Splitter|RF-Connector",
   "package": "e.g. QFN-16, SOT-363, DFN-8",
+  "package_size": "e.g. 3.0x3.0mm, 2.0x2.0x0.5mm, or null if not specified",
   "pin_count": number or null,
   "enable_level": "Active High | Active Low | null",
   "switch_logic": [
@@ -81,6 +82,7 @@ Return JSON in this exact format:
       "isolation_db": "...",
       "isolation_min_db": "...",
       "ports": "...",
+      "power_handling_dbm": "...",
       "vswr": "...",
       "impedance_ohm": "...",
       "amplitude_balance_db": "...",
@@ -100,7 +102,7 @@ Field usage by device type:
 - PA: vcc_v, icc_ma, gain_db, gain_min_db, p1db_dbm, psat_dbm, pae_percent, s11_db, s22_db
 - LNA: vcc_v, icc_ma, gain_db, gain_min_db, nf_db, nf_max_db, iip3_dbm, op1db_dbm, oip3_dbm, s11_db
 - Filter: insertion_loss_db, insertion_loss_max_db, rejection_db, return_loss_db
-- Switch: vcc_v, insertion_loss_db, insertion_loss_max_db, isolation_db, isolation_min_db, p1db_dbm, ports
+- Switch: vcc_v, insertion_loss_db, insertion_loss_max_db, isolation_db, isolation_min_db, p1db_dbm, power_handling_dbm, ports
 - FEM: tx_gain_db, tx_p1db_dbm, tx_psat_dbm, rx_gain_db, rx_nf_db, vcc_v, icc_ma, ports, switch_logic
 - Balun: insertion_loss_db, return_loss_db, amplitude_balance_db, phase_balance_deg, impedance_ohm
 - Splitter: insertion_loss_db, return_loss_db, isolation_db, amplitude_balance_db, phase_balance_deg, power_handling_dbm, ports

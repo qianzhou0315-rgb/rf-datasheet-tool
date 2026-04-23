@@ -1,19 +1,34 @@
+import { useState } from "react";
 import { Routes, Route, NavLink } from "react-router-dom";
 import UploadPage from "./pages/Upload";
 import LibraryPage from "./pages/Library";
+import LoginPage from "./pages/Login";
 
 const NAV_ITEMS = [
   { to: "/", label: "上传 Datasheet" },
   { to: "/library", label: "器件库" },
 ];
 
+function useAuth() {
+  const [authed, setAuthed] = useState(() => localStorage.getItem("rf_auth") === "1");
+  const login = () => setAuthed(true);
+  const logout = () => { localStorage.removeItem("rf_auth"); setAuthed(false); };
+  return { authed, login, logout };
+}
+
 export default function App() {
+  const { authed, login, logout } = useAuth();
+
+  if (!authed) {
+    return <LoginPage onLogin={login} />;
+  }
+
   return (
     <div className="min-h-screen flex flex-col">
       <header className="bg-blue-700 text-white shadow">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-8">
           <span className="font-bold text-lg tracking-wide">RF Datasheet Tool</span>
-          <nav className="flex gap-4">
+          <nav className="flex gap-4 flex-1">
             {NAV_ITEMS.map((n) => (
               <NavLink
                 key={n.to}
@@ -31,6 +46,12 @@ export default function App() {
               </NavLink>
             ))}
           </nav>
+          <button
+            onClick={logout}
+            className="text-xs text-blue-200 hover:text-white transition"
+          >
+            退出登录
+          </button>
         </div>
       </header>
 
