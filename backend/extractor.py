@@ -2,6 +2,7 @@ from openai import OpenAI
 import base64
 import json
 import os
+import time
 import fitz  # PyMuPDF
 import pdfplumber
 from io import BytesIO
@@ -103,8 +104,18 @@ Field usage by device type:
 - LNA: vcc_v, icc_ma, gain_db, gain_min_db, nf_db, nf_max_db, iip3_dbm, op1db_dbm, oip3_dbm, s11_db
 - Filter: insertion_loss_db, insertion_loss_max_db, rejection_db, return_loss_db
 - Switch: vcc_v, insertion_loss_db, insertion_loss_max_db, isolation_db, isolation_min_db, p1db_dbm, power_handling_dbm, ports
-- FEM: tx_gain_db, tx_p1db_dbm, tx_psat_dbm, rx_gain_db, rx_nf_db, vcc_v, icc_ma, ports, switch_logic
+- FEM: vcc_v, icc_ma, tx_gain_db, tx_p1db_dbm, tx_psat_dbm, rx_gain_db, rx_nf_db, ports, switch_logic
+  * tx_gain_db: TX path gain or PA gain (dB)
+  * tx_p1db_dbm: TX path output P1dB (dBm)
+  * tx_psat_dbm: TX path saturated output power (dBm)
+  * rx_gain_db: RX path gain or LNA gain (dB)
+  * rx_nf_db: RX path noise figure (dB)
+  * If device has only RX path (LNA+switch FEM), leave tx_* as null and fill rx_gain_db, rx_nf_db
+  * If device has only TX path (PA+switch FEM), leave rx_* as null and fill tx_gain_db, tx_p1db_dbm, tx_psat_dbm
 - Balun: insertion_loss_db, return_loss_db, amplitude_balance_db, phase_balance_deg, impedance_ohm
+  * amplitude_balance_db: amplitude imbalance between balanced ports (dB)
+  * phase_balance_deg: phase imbalance between balanced ports (degrees)
+  * impedance_ohm: impedance transformation ratio e.g. "50:100" or single value "50"
 - Splitter: insertion_loss_db, return_loss_db, isolation_db, amplitude_balance_db, phase_balance_deg, power_handling_dbm, ports
 - RF-Connector: insertion_loss_db, return_loss_db, vswr, impedance_ohm, power_handling_dbm
 
@@ -165,14 +176,26 @@ def extract_specs(pdf_bytes: bytes) -> dict:
 
     content.append({"type": "text", "text": EXTRACT_PROMPT})
 
-    response = client.chat.completions.create(
-        model="moonshot-v1-32k-vision-preview",
-        max_tokens=3000,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": content},
-        ],
-    )
+    last_err = None
+    for attempt in range(3):
+        try:
+            response = client.chat.completions.create(
+                model="moonshot-v1-32k-vision-preview",
+                max_tokens=3000,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": content},
+                ],
+            )
+            break
+        except Exception as e:
+            last_err = e
+            if "429" in str(e) or "overloaded" in str(e).lower():
+                time.sleep(15 * (attempt + 1))
+            else:
+                raise
+    else:
+        raise last_err
 
     raw = response.choices[0].message.content.strip()
     if raw.startswith("```"):
