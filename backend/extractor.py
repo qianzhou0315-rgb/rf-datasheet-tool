@@ -20,13 +20,22 @@ Frequencies in MHz."""
 
 EXTRACT_PROMPT = """Extract ALL specifications from this RF component datasheet across ALL supported frequency bands.
 
-Identify device type: PA, LNA, Filter, or Switch.
+Identify device type: PA, LNA, Filter, Switch, FEM, Balun, Splitter, or RF-Connector.
+
+- PA: Power Amplifier
+- LNA: Low Noise Amplifier
+- Filter: bandpass/lowpass/highpass/notch filter
+- Switch: RF switch (SPDT, SP3T, SP4T, etc.)
+- FEM: Front-End Module (integrates PA+LNA+Switch+Filter)
+- Balun: Balun / transformer
+- Splitter: power divider / splitter / combiner
+- RF-Connector: SMA, N-type, MMCX, U.FL, etc.
 
 Return JSON in this exact format:
 {
   "device_name": "...",
   "manufacturer": "...",
-  "device_type": "PA|LNA|Filter|Switch",
+  "device_type": "PA|LNA|Filter|Switch|FEM|Balun|Splitter|RF-Connector",
   "package": "e.g. QFN-16, SOT-363, DFN-8",
   "pin_count": number or null,
   "enable_level": "Active High | Active Low | null",
@@ -61,14 +70,34 @@ Return JSON in this exact format:
       "return_loss_db": "...",
       "isolation_db": "...",
       "isolation_min_db": "...",
-      "ports": "..."
+      "ports": "...",
+      "vswr": "...",
+      "impedance_ohm": "...",
+      "amplitude_balance_db": "...",
+      "phase_balance_deg": "...",
+      "power_handling_dbm": "...",
+      "tx_gain_db": "...",
+      "tx_p1db_dbm": "...",
+      "tx_psat_dbm": "...",
+      "rx_gain_db": "...",
+      "rx_nf_db": "..."
     }
   ],
   "notes": "..."
 }
 
+Field usage by device type:
+- PA: vcc_v, icc_ma, gain_db, gain_min_db, p1db_dbm, psat_dbm, pae_percent, s11_db, s22_db
+- LNA: vcc_v, icc_ma, gain_db, gain_min_db, nf_db, nf_max_db, iip3_dbm, op1db_dbm, oip3_dbm, s11_db
+- Filter: insertion_loss_db, insertion_loss_max_db, rejection_db, return_loss_db
+- Switch: vcc_v, insertion_loss_db, insertion_loss_max_db, isolation_db, isolation_min_db, p1db_dbm, ports
+- FEM: tx_gain_db, tx_p1db_dbm, tx_psat_dbm, rx_gain_db, rx_nf_db, vcc_v, icc_ma, ports, switch_logic
+- Balun: insertion_loss_db, return_loss_db, amplitude_balance_db, phase_balance_deg, impedance_ohm
+- Splitter: insertion_loss_db, return_loss_db, isolation_db, amplitude_balance_db, phase_balance_deg, power_handling_dbm, ports
+- RF-Connector: insertion_loss_db, return_loss_db, vswr, impedance_ohm, power_handling_dbm
+
 If the device only has one frequency range, put one entry in bands.
-For switch_logic, only fill if device has control pins (LNA bypass switch or RF switch).
+For switch_logic, only fill if device has control pins (LNA bypass switch, RF switch, or FEM TX/RX switch).
 For enable_level, only fill if device has enable/shutdown pin."""
 
 

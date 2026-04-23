@@ -9,7 +9,7 @@ class Device(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(200), nullable=False)
     manufacturer = Column(String(200))
-    device_type = Column(String(50))  # PA, LNA, Filter, Switch
+    device_type = Column(String(50))  # PA, LNA, Filter, Switch, FEM, Balun, Splitter, RF-Connector
     freq_min_mhz = Column(Float)   # overall min freq
     freq_max_mhz = Column(Float)   # overall max freq
     package = Column(String(100))  # e.g. QFN-16

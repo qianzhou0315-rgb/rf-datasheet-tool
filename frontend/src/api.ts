@@ -8,6 +8,7 @@ export interface Band {
   freq_min_mhz: number;
   freq_max_mhz: number;
   band_name?: string;
+  // PA / LNA / FEM TX
   vcc_v?: string;
   icc_ma?: string;
   gain_db?: string;
@@ -15,6 +16,7 @@ export interface Band {
   p1db_dbm?: string;
   psat_dbm?: string;
   pae_percent?: string;
+  // LNA
   nf_db?: string;
   nf_max_db?: string;
   iip3_dbm?: string;
@@ -22,6 +24,7 @@ export interface Band {
   oip3_dbm?: string;
   s11_db?: string;
   s22_db?: string;
+  // Filter / Switch / Splitter
   insertion_loss_db?: string;
   insertion_loss_max_db?: string;
   rejection_db?: string;
@@ -29,6 +32,20 @@ export interface Band {
   isolation_db?: string;
   isolation_min_db?: string;
   ports?: string;
+  // FEM
+  tx_gain_db?: string;
+  tx_p1db_dbm?: string;
+  tx_psat_dbm?: string;
+  rx_gain_db?: string;
+  rx_nf_db?: string;
+  // Balun / Splitter
+  amplitude_balance_db?: string;
+  phase_balance_deg?: string;
+  impedance_ohm?: string;
+  // Splitter / Connector
+  power_handling_dbm?: string;
+  // RF-Connector
+  vswr?: string;
 }
 
 export interface SwitchLogic {
@@ -36,11 +53,13 @@ export interface SwitchLogic {
   path: string;
 }
 
+export type DeviceType = "PA" | "LNA" | "Filter" | "Switch" | "FEM" | "Balun" | "Splitter" | "RF-Connector";
+
 export interface Device {
   id: number;
   name: string;
   manufacturer: string;
-  device_type: "PA" | "LNA" | "Filter" | "Switch";
+  device_type: DeviceType;
   freq_min_mhz: number;
   freq_max_mhz: number;
   package?: string;
@@ -72,6 +91,14 @@ export const uploadDatasheet = async (
 
 export const deleteDevice = async (id: number): Promise<void> => {
   await api.delete(`/devices/${id}`);
+};
+
+export const downloadDatasheet = (id: number, name: string) => {
+  const base = (import.meta.env.VITE_API_URL || "") + `/api/devices/${id}/datasheet`;
+  const a = document.createElement("a");
+  a.href = base;
+  a.download = `${name}.pdf`;
+  a.click();
 };
 
 export const exportDevices = (params?: {

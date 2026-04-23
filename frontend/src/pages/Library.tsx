@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
-import { fetchDevices, deleteDevice, exportDevices, Device, Band, SwitchLogic } from "../api";
+import { fetchDevices, deleteDevice, exportDevices, downloadDatasheet, Device, Band, SwitchLogic, DeviceType } from "../api";
 
-const DEVICE_TYPES = ["全部", "PA", "LNA", "Filter", "Switch"];
+const DEVICE_TYPES: (DeviceType | "全部")[] = ["全部", "PA", "LNA", "Filter", "Switch", "FEM", "Balun", "Splitter", "RF-Connector"];
 
 const PRESET_BANDS = [
   { label: "n77", min: 3300, max: 4200 },
@@ -12,6 +12,8 @@ const PRESET_BANDS = [
   { label: "n41", min: 2496, max: 2690 },
   { label: "n28", min: 700, max: 960 },
   { label: "n1", min: 1920, max: 2170 },
+  { label: "2.4G", min: 2400, max: 2500 },
+  { label: "5G WiFi", min: 5150, max: 5850 },
 ];
 
 function fmt(v: string | number | null | undefined): string {
@@ -22,48 +24,89 @@ function fmt(v: string | number | null | undefined): string {
 function BandCols({ band, type }: { band: Band; type: string }) {
   if (type === "PA") return (
     <>
-      <td className="px-2 py-2 text-right text-gray-800 whitespace-nowrap">{fmt(band.vcc_v)}</td>
-      <td className="px-2 py-2 text-right text-gray-800 whitespace-nowrap">{fmt(band.icc_ma)}</td>
-      <td className="px-2 py-2 text-right text-gray-800 whitespace-nowrap">{fmt(band.gain_db)}</td>
-      <td className="px-2 py-2 text-right text-gray-800 whitespace-nowrap">{fmt(band.gain_min_db)}</td>
-      <td className="px-2 py-2 text-right text-gray-800 whitespace-nowrap">{fmt(band.p1db_dbm)}</td>
-      <td className="px-2 py-2 text-right text-gray-800 whitespace-nowrap">{fmt(band.psat_dbm)}</td>
-      <td className="px-2 py-2 text-right text-gray-800 whitespace-nowrap">{fmt(band.pae_percent)}</td>
-      <td className="px-2 py-2 text-right text-gray-800 whitespace-nowrap">{fmt(band.s11_db)}</td>
-      <td className="px-2 py-2 text-right text-gray-800 whitespace-nowrap">{fmt(band.s22_db)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.vcc_v)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.icc_ma)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.gain_db)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.gain_min_db)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.p1db_dbm)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.psat_dbm)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.pae_percent)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.s11_db)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.s22_db)}</td>
     </>
   );
   if (type === "LNA") return (
     <>
-      <td className="px-2 py-2 text-right text-gray-800 whitespace-nowrap">{fmt(band.vcc_v)}</td>
-      <td className="px-2 py-2 text-right text-gray-800 whitespace-nowrap">{fmt(band.icc_ma)}</td>
-      <td className="px-2 py-2 text-right text-gray-800 whitespace-nowrap">{fmt(band.gain_db)}</td>
-      <td className="px-2 py-2 text-right text-gray-800 whitespace-nowrap">{fmt(band.gain_min_db)}</td>
-      <td className="px-2 py-2 text-right text-gray-800 whitespace-nowrap">{fmt(band.nf_db)}</td>
-      <td className="px-2 py-2 text-right text-gray-800 whitespace-nowrap">{fmt(band.nf_max_db)}</td>
-      <td className="px-2 py-2 text-right text-gray-800 whitespace-nowrap">{fmt(band.iip3_dbm)}</td>
-      <td className="px-2 py-2 text-right text-gray-800 whitespace-nowrap">{fmt(band.op1db_dbm)}</td>
-      <td className="px-2 py-2 text-right text-gray-800 whitespace-nowrap">{fmt(band.oip3_dbm)}</td>
-      <td className="px-2 py-2 text-right text-gray-800 whitespace-nowrap">{fmt(band.s11_db)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.vcc_v)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.icc_ma)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.gain_db)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.gain_min_db)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.nf_db)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.nf_max_db)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.iip3_dbm)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.op1db_dbm)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.oip3_dbm)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.s11_db)}</td>
     </>
   );
   if (type === "Filter") return (
     <>
-      <td className="px-2 py-2 text-right text-gray-800 whitespace-nowrap">{fmt(band.insertion_loss_db)}</td>
-      <td className="px-2 py-2 text-right text-gray-800 whitespace-nowrap">{fmt(band.insertion_loss_max_db)}</td>
-      <td className="px-2 py-2 text-right text-gray-800 whitespace-nowrap">{fmt(band.rejection_db)}</td>
-      <td className="px-2 py-2 text-right text-gray-800 whitespace-nowrap">{fmt(band.return_loss_db)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.insertion_loss_db)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.insertion_loss_max_db)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.rejection_db)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.return_loss_db)}</td>
     </>
   );
   if (type === "Switch") return (
     <>
-      <td className="px-2 py-2 text-right text-gray-800 whitespace-nowrap">{fmt(band.vcc_v)}</td>
-      <td className="px-2 py-2 text-right text-gray-800 whitespace-nowrap">{fmt(band.insertion_loss_db)}</td>
-      <td className="px-2 py-2 text-right text-gray-800 whitespace-nowrap">{fmt(band.insertion_loss_max_db)}</td>
-      <td className="px-2 py-2 text-right text-gray-800 whitespace-nowrap">{fmt(band.isolation_db)}</td>
-      <td className="px-2 py-2 text-right text-gray-800 whitespace-nowrap">{fmt(band.isolation_min_db)}</td>
-      <td className="px-2 py-2 text-right text-gray-800 whitespace-nowrap">{fmt(band.p1db_dbm)}</td>
-      <td className="px-2 py-2 text-right text-gray-800 whitespace-nowrap">{fmt(band.ports)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.vcc_v)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.insertion_loss_db)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.insertion_loss_max_db)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.isolation_db)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.isolation_min_db)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.p1db_dbm)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.ports)}</td>
+    </>
+  );
+  if (type === "FEM") return (
+    <>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.vcc_v)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.icc_ma)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.tx_gain_db)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.tx_p1db_dbm)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.tx_psat_dbm)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.rx_gain_db)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.rx_nf_db)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.ports)}</td>
+    </>
+  );
+  if (type === "Balun") return (
+    <>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.insertion_loss_db)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.return_loss_db)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.amplitude_balance_db)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.phase_balance_deg)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.impedance_ohm)}</td>
+    </>
+  );
+  if (type === "Splitter") return (
+    <>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.insertion_loss_db)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.return_loss_db)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.isolation_db)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.amplitude_balance_db)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.phase_balance_deg)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.power_handling_dbm)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.ports)}</td>
+    </>
+  );
+  if (type === "RF-Connector") return (
+    <>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.insertion_loss_db)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.return_loss_db)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.vswr)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.impedance_ohm)}</td>
+      <td className="px-2 py-2 text-right whitespace-nowrap">{fmt(band.power_handling_dbm)}</td>
     </>
   );
   return null;
@@ -93,7 +136,29 @@ const TYPE_COLS: Record<string, { label: string; unit?: string }[]> = {
     { label: "隔离Typ", unit: "dB" }, { label: "隔离Min", unit: "dB" },
     { label: "P1dB", unit: "dBm" }, { label: "端口" },
   ],
+  FEM: [
+    { label: "Vcc", unit: "V" }, { label: "Icc", unit: "mA" },
+    { label: "TX增益", unit: "dB" }, { label: "TX P1dB", unit: "dBm" }, { label: "TX Psat", unit: "dBm" },
+    { label: "RX增益", unit: "dB" }, { label: "RX NF", unit: "dB" }, { label: "端口" },
+  ],
+  Balun: [
+    { label: "IL Typ", unit: "dB" }, { label: "回波损耗", unit: "dB" },
+    { label: "幅度不平衡", unit: "dB" }, { label: "相位不平衡", unit: "°" }, { label: "阻抗", unit: "Ω" },
+  ],
+  Splitter: [
+    { label: "IL Typ", unit: "dB" }, { label: "回波损耗", unit: "dB" },
+    { label: "隔离", unit: "dB" }, { label: "幅度不平衡", unit: "dB" }, { label: "相位不平衡", unit: "°" },
+    { label: "功率容量", unit: "dBm" }, { label: "端口" },
+  ],
+  "RF-Connector": [
+    { label: "IL Typ", unit: "dB" }, { label: "回波损耗", unit: "dB" },
+    { label: "VSWR" }, { label: "阻抗", unit: "Ω" }, { label: "功率容量", unit: "dBm" },
+  ],
 };
+
+// Types that have enable/switch logic columns
+const HAS_ENABLE = new Set(["PA", "LNA", "Switch", "FEM"]);
+const HAS_SWITCH_LOGIC = new Set(["LNA", "Switch", "FEM"]);
 
 function DeviceTable({ type, devices, onDelete }: {
   type: string;
@@ -103,6 +168,9 @@ function DeviceTable({ type, devices, onDelete }: {
   const cols = TYPE_COLS[type] || [];
   if (devices.length === 0)
     return <p className="text-gray-400 text-sm py-4">暂无 {type} 器件</p>;
+
+  const showEnable = HAS_ENABLE.has(type);
+  const showSwitch = HAS_SWITCH_LOGIC.has(type);
 
   return (
     <div className="overflow-x-auto">
@@ -120,8 +188,9 @@ function DeviceTable({ type, devices, onDelete }: {
                 {c.label}{c.unit && <span className="text-gray-400 font-normal ml-1">({c.unit})</span>}
               </th>
             ))}
-            <th className="text-left px-2 py-2 font-semibold text-gray-600 border-b whitespace-nowrap">使能</th>
-            <th className="text-left px-2 py-2 font-semibold text-gray-600 border-b whitespace-nowrap">开关逻辑</th>
+            {showEnable && <th className="text-left px-2 py-2 font-semibold text-gray-600 border-b whitespace-nowrap">使能</th>}
+            {showSwitch && <th className="text-left px-2 py-2 font-semibold text-gray-600 border-b whitespace-nowrap">开关逻辑</th>}
+            <th className="px-2 py-2 border-b whitespace-nowrap">Datasheet</th>
             <th className="px-2 py-2 border-b" />
           </tr>
         </thead>
@@ -136,7 +205,7 @@ function DeviceTable({ type, devices, onDelete }: {
                 {bi === 0 && (
                   <>
                     <td rowSpan={bands.length} className="px-2 py-2 font-medium text-blue-700 whitespace-nowrap border-r">
-                      <a href={d.pdf_url} target="_blank" rel="noreferrer" className="hover:underline">{d.name}</a>
+                      {d.name}
                     </td>
                     <td rowSpan={bands.length} className="px-2 py-2 text-gray-600 whitespace-nowrap border-r">{fmt(d.manufacturer)}</td>
                     <td rowSpan={bands.length} className="px-2 py-2 text-gray-600 whitespace-nowrap border-r">{fmt(d.package)}</td>
@@ -150,8 +219,21 @@ function DeviceTable({ type, devices, onDelete }: {
                 <BandCols band={band} type={type} />
                 {bi === 0 && (
                   <>
-                    <td rowSpan={bands.length} className="px-2 py-2 text-gray-600 whitespace-nowrap text-xs border-l">{fmt(d.enable_level)}</td>
-                    <td rowSpan={bands.length} className="px-2 py-2 text-gray-600 text-xs border-l max-w-xs">{switchStr}</td>
+                    {showEnable && (
+                      <td rowSpan={bands.length} className="px-2 py-2 text-gray-600 whitespace-nowrap text-xs border-l">{fmt(d.enable_level)}</td>
+                    )}
+                    {showSwitch && (
+                      <td rowSpan={bands.length} className="px-2 py-2 text-gray-600 text-xs border-l max-w-xs">{switchStr}</td>
+                    )}
+                    <td rowSpan={bands.length} className="px-2 py-2 text-center border-l">
+                      <button
+                        onClick={() => downloadDatasheet(d.id, d.name)}
+                        className="text-xs text-blue-500 hover:text-blue-700"
+                        title="下载原始 PDF"
+                      >
+                        ↓ PDF
+                      </button>
+                    </td>
                     <td rowSpan={bands.length} className="px-2 py-2 text-right border-l">
                       <button onClick={() => onDelete(d.id)} className="text-xs text-red-400 hover:text-red-600">删除</button>
                     </td>
@@ -168,7 +250,7 @@ function DeviceTable({ type, devices, onDelete }: {
 
 export default function LibraryPage() {
   const qc = useQueryClient();
-  const [activeType, setActiveType] = useState("全部");
+  const [activeType, setActiveType] = useState<DeviceType | "全部">("全部");
   const [freqMin, setFreqMin] = useState<string>("");
   const [freqMax, setFreqMax] = useState<string>("");
   const [activePreset, setActivePreset] = useState<string>("");
@@ -212,9 +294,11 @@ export default function LibraryPage() {
     exportDevices(params);
   };
 
+  const typeList = (["PA", "LNA", "Filter", "Switch", "FEM", "Balun", "Splitter", "RF-Connector"] as DeviceType[]);
+
   const grouped =
     activeType === "全部"
-      ? (["PA", "LNA", "Filter", "Switch"] as const).reduce((acc, t) => {
+      ? typeList.reduce((acc, t) => {
           acc[t] = devices.filter((d) => d.device_type === t);
           return acc;
         }, {} as Record<string, Device[]>)
@@ -278,12 +362,12 @@ export default function LibraryPage() {
       </div>
 
       {/* Type Tabs */}
-      <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
+      <div className="flex flex-wrap gap-1 bg-gray-100 p-1 rounded-lg w-fit">
         {DEVICE_TYPES.map((t) => (
           <button
             key={t}
             onClick={() => setActiveType(t)}
-            className={`px-4 py-1.5 rounded-md text-sm font-medium transition ${
+            className={`px-3 py-1.5 rounded-md text-sm font-medium transition ${
               activeType === t ? "bg-white shadow text-blue-700" : "text-gray-600 hover:text-gray-800"
             }`}
           >

@@ -5,6 +5,9 @@ from sqlalchemy.orm import Session
 from typing import Optional
 import json
 import io
+import os
+import boto3
+from botocore.config import Config
 
 from database import engine, get_db, Base
 from models import Device
@@ -23,6 +26,8 @@ app.add_middleware(
     allow_credentials=False,
 )
 
+DEVICE_TYPES = ["PA", "LNA", "Filter", "Switch", "FEM", "Balun", "Splitter", "RF-Connector"]
+
 
 def parse_float(value) -> Optional[float]:
     if value is None:
@@ -31,6 +36,18 @@ def parse_float(value) -> Optional[float]:
         return float(str(value).replace("~", "").strip())
     except (ValueError, TypeError):
         return None
+
+
+def get_cos_client():
+    region = os.getenv("COS_REGION", "ap-guangzhou")
+    return boto3.client(
+        "s3",
+        endpoint_url=f"https://cos.{region}.myqcloud.com",
+        aws_access_key_id=os.getenv("COS_SECRET_ID"),
+        aws_secret_access_key=os.getenv("COS_SECRET_KEY"),
+        config=Config(signature_version="s3v4", s3={"addressing_style": "virtual"}),
+        region_name=region,
+    )
 
 
 @app.post("/api/upload")
@@ -129,6 +146,31 @@ def delete_device(device_id: int, db: Session = Depends(get_db)):
     return {"ok": True}
 
 
+@app.get("/api/devices/{device_id}/datasheet")
+def download_datasheet(device_id: int, db: Session = Depends(get_db)):
+    """Proxy download of the original PDF from COS."""
+    device = db.query(Device).filter(Device.id == device_id).first()
+    if not device:
+        raise HTTPException(404, "Device not found")
+    if not device.pdf_filename:
+        raise HTTPException(404, "No PDF on file")
+
+    bucket = os.getenv("COS_BUCKET_NAME")
+    cos = get_cos_client()
+    try:
+        obj = cos.get_object(Bucket=bucket, Key=device.pdf_filename)
+        pdf_bytes = obj["Body"].read()
+    except Exception as e:
+        raise HTTPException(500, f"Failed to fetch PDF: {str(e)}")
+
+    filename = device.name + ".pdf"
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @app.get("/api/export")
 def export_devices(
     device_type: Optional[str] = Query(None),
@@ -170,67 +212,93 @@ def export_devices(
         "Switch": ["型号", "厂家", "封装", "Pin数", "频段(MHz)", "频段名", "Vcc(V)",
                    "IL Typ(dB)", "IL Max(dB)", "隔离Typ(dB)", "隔离Min(dB)",
                    "P1dB(dBm)", "端口", "使能电平", "开关逻辑", "备注"],
+        "FEM": ["型号", "厂家", "封装", "Pin数", "频段(MHz)", "频段名", "Vcc(V)", "Icc(mA)",
+                "TX增益(dB)", "TX P1dB(dBm)", "TX Psat(dBm)",
+                "RX增益(dB)", "RX NF(dB)", "端口", "使能电平", "开关逻辑", "备注"],
+        "Balun": ["型号", "厂家", "封装", "Pin数", "频段(MHz)", "频段名",
+                  "IL Typ(dB)", "回波损耗(dB)", "幅度不平衡(dB)", "相位不平衡(°)", "阻抗(Ω)", "备注"],
+        "Splitter": ["型号", "厂家", "封装", "Pin数", "频段(MHz)", "频段名",
+                     "IL Typ(dB)", "回波损耗(dB)", "隔离(dB)", "幅度不平衡(dB)", "相位不平衡(°)",
+                     "功率容量(dBm)", "端口", "备注"],
+        "RF-Connector": ["型号", "厂家", "封装/型号", "频段(MHz)", "频段名",
+                         "IL Typ(dB)", "回波损耗(dB)", "VSWR", "阻抗(Ω)", "功率容量(dBm)", "备注"],
     }
 
-    for dtype in ["PA", "LNA", "Filter", "Switch"]:
+    for dtype in DEVICE_TYPES:
         devs = [d for d in devices if d.device_type == dtype]
         if not devs:
             continue
         ws = wb.create_sheet(dtype)
-        headers = type_headers[dtype]
+        headers = type_headers.get(dtype, ["型号", "厂家", "封装", "Pin数", "频段(MHz)", "频段名", "备注"])
         for col, h in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col, value=h)
             cell.fill = header_fill
             cell.font = header_font
             cell.alignment = Alignment(horizontal="center")
-            ws.column_dimensions[ws.cell(row=1, column=col).column_letter].width = max(len(h) * 1.5, 12)
+            ws.column_dimensions[ws.cell(row=1, column=col).column_letter].width = max(len(h) * 1.8, 12)
 
         row = 2
         for d in devs:
             bands = d.bands or [{}]
-            switch_logic_str = ""
+            switch_str = ""
             if d.switch_logic:
-                switch_logic_str = "; ".join(
+                switch_str = "; ".join(
                     f"{s.get('ctrl','')}→{s.get('path','')}" for s in d.switch_logic
                 )
+            notes = d.raw_specs.get("notes", "") if d.raw_specs else ""
+
             for band in bands:
                 freq_str = f"{band.get('freq_min_mhz','')}–{band.get('freq_max_mhz','')}"
-                band_name = band.get("band_name") or ""
+                bn = band.get("band_name") or ""
 
                 if dtype == "PA":
-                    row_data = [d.name, d.manufacturer, d.package, d.pin_count,
-                                freq_str, band_name,
+                    row_data = [d.name, d.manufacturer, d.package, d.pin_count, freq_str, bn,
                                 band.get("vcc_v"), band.get("icc_ma"),
                                 band.get("gain_db"), band.get("gain_min_db"),
                                 band.get("p1db_dbm"), band.get("psat_dbm"), band.get("pae_percent"),
-                                band.get("s11_db"), band.get("s22_db"),
-                                d.enable_level, d.raw_specs.get("notes") if d.raw_specs else ""]
+                                band.get("s11_db"), band.get("s22_db"), d.enable_level, notes]
                 elif dtype == "LNA":
-                    row_data = [d.name, d.manufacturer, d.package, d.pin_count,
-                                freq_str, band_name,
+                    row_data = [d.name, d.manufacturer, d.package, d.pin_count, freq_str, bn,
                                 band.get("vcc_v"), band.get("icc_ma"),
                                 band.get("gain_db"), band.get("gain_min_db"),
                                 band.get("nf_db"), band.get("nf_max_db"),
                                 band.get("iip3_dbm"), band.get("op1db_dbm"), band.get("oip3_dbm"),
-                                band.get("s11_db"),
-                                d.enable_level, switch_logic_str,
-                                d.raw_specs.get("notes") if d.raw_specs else ""]
+                                band.get("s11_db"), d.enable_level, switch_str, notes]
                 elif dtype == "Filter":
-                    row_data = [d.name, d.manufacturer, d.package, d.pin_count,
-                                freq_str, band_name,
+                    row_data = [d.name, d.manufacturer, d.package, d.pin_count, freq_str, bn,
                                 band.get("insertion_loss_db"), band.get("insertion_loss_max_db"),
-                                band.get("rejection_db"), band.get("return_loss_db"),
-                                d.raw_specs.get("notes") if d.raw_specs else ""]
+                                band.get("rejection_db"), band.get("return_loss_db"), notes]
                 elif dtype == "Switch":
-                    row_data = [d.name, d.manufacturer, d.package, d.pin_count,
-                                freq_str, band_name, band.get("vcc_v"),
+                    row_data = [d.name, d.manufacturer, d.package, d.pin_count, freq_str, bn,
+                                band.get("vcc_v"),
                                 band.get("insertion_loss_db"), band.get("insertion_loss_max_db"),
                                 band.get("isolation_db"), band.get("isolation_min_db"),
                                 band.get("p1db_dbm"), band.get("ports"),
-                                d.enable_level, switch_logic_str,
-                                d.raw_specs.get("notes") if d.raw_specs else ""]
+                                d.enable_level, switch_str, notes]
+                elif dtype == "FEM":
+                    row_data = [d.name, d.manufacturer, d.package, d.pin_count, freq_str, bn,
+                                band.get("vcc_v"), band.get("icc_ma"),
+                                band.get("tx_gain_db"), band.get("tx_p1db_dbm"), band.get("tx_psat_dbm"),
+                                band.get("rx_gain_db"), band.get("rx_nf_db"),
+                                band.get("ports"), d.enable_level, switch_str, notes]
+                elif dtype == "Balun":
+                    row_data = [d.name, d.manufacturer, d.package, d.pin_count, freq_str, bn,
+                                band.get("insertion_loss_db"), band.get("return_loss_db"),
+                                band.get("amplitude_balance_db"), band.get("phase_balance_deg"),
+                                band.get("impedance_ohm"), notes]
+                elif dtype == "Splitter":
+                    row_data = [d.name, d.manufacturer, d.package, d.pin_count, freq_str, bn,
+                                band.get("insertion_loss_db"), band.get("return_loss_db"),
+                                band.get("isolation_db"),
+                                band.get("amplitude_balance_db"), band.get("phase_balance_deg"),
+                                band.get("power_handling_dbm"), band.get("ports"), notes]
+                elif dtype == "RF-Connector":
+                    row_data = [d.name, d.manufacturer, d.package, freq_str, bn,
+                                band.get("insertion_loss_db"), band.get("return_loss_db"),
+                                band.get("vswr"), band.get("impedance_ohm"),
+                                band.get("power_handling_dbm"), notes]
                 else:
-                    row_data = []
+                    row_data = [d.name, d.manufacturer, d.package, d.pin_count, freq_str, bn, notes]
 
                 for col, val in enumerate(row_data, 1):
                     ws.cell(row=row, column=col, value=val)
