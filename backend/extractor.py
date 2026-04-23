@@ -20,16 +20,26 @@ Frequencies in MHz."""
 
 EXTRACT_PROMPT = """Extract ALL specifications from this RF component datasheet across ALL supported frequency bands.
 
-Identify device type: PA, LNA, Filter, Switch, FEM, Balun, Splitter, or RF-Connector.
+Identify device type using the decision rules below. Choose EXACTLY ONE from: PA, LNA, Filter, Switch, FEM, Balun, Splitter, RF-Connector.
 
-- PA: Power Amplifier
-- LNA: Low Noise Amplifier
-- Filter: bandpass/lowpass/highpass/notch filter
-- Switch: RF switch (SPDT, SP3T, SP4T, etc.)
-- FEM: Front-End Module (integrates PA+LNA+Switch+Filter)
-- Balun: Balun / transformer
-- Splitter: power divider / splitter / combiner
-- RF-Connector: SMA, N-type, MMCX, U.FL, etc.
+CLASSIFICATION RULES (apply in order, pick the first match):
+
+1. RF-Connector → physical connector (SMA, N-type, MMCX, U.FL, SMP, BNC, TNC, etc.)
+2. Balun → balun, transformer, impedance converter (balanced-to-unbalanced)
+3. Splitter → power divider, splitter, combiner, coupler
+4. Filter → filter only (bandpass/lowpass/highpass/notch) with no active gain stage
+5. FEM → Front-End Module. Use FEM if the device contains TWO OR MORE of: LNA, PA, TX path, RX path, bypass switch, integrated filter. Key indicators:
+   - Has both TX and RX signal paths
+   - Has LNA + bypass switch integrated together (e.g. "LNA with bypass", "receive module with switch")
+   - Datasheet title/description contains "Front-End", "FEM", "RF Module", "Receive Module", "Tx/Rx Module"
+   - Has separate TX_IN/TX_OUT and RX_IN/RX_OUT pins
+   - NV5549, SKY65xx, RFFM series, QPAxxx with integrated switch → FEM
+6. Switch → RF switch only, no active gain, has multiple RF ports switched by control pins (SPDT/SP3T/SP4T/etc.)
+7. PA → power amplifier only, primarily amplifies in TX direction, high output power
+8. LNA → low noise amplifier only, single signal path amplification, no integrated TX path or bypass switch logic
+
+IMPORTANT: A device with "LNA + bypass switch" or "LNA + TX/RX switch" is FEM, not LNA.
+A device with integrated filter + LNA is FEM, not LNA or Filter.
 
 Return JSON in this exact format:
 {
