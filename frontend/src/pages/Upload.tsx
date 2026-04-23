@@ -43,6 +43,7 @@ export default function UploadPage() {
               : x
           )
         );
+        qc.invalidateQueries({ queryKey: ["devices"] });
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "失败";
         setResults((r) =>

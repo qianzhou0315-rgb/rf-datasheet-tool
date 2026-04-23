@@ -82,25 +82,53 @@ async def upload_datasheet(
     if not freq_max and bands:
         freq_max = max((b.get("freq_max_mhz") or 0) for b in bands if b.get("freq_max_mhz"))
 
-    device = Device(
-        name=result.get("device_name", file.filename),
-        manufacturer=result.get("manufacturer"),
-        device_type=result.get("device_type"),
-        freq_min_mhz=freq_min,
-        freq_max_mhz=freq_max,
-        package=result.get("package"),
-        package_size=result.get("package_size"),
-        pin_count=result.get("pin_count"),
-        enable_level=result.get("enable_level"),
-        switch_logic=result.get("switch_logic"),
-        bands=bands,
-        pdf_filename=stored_name,
-        pdf_url=pdf_url,
-        raw_specs=result,
-    )
-    db.add(device)
-    db.commit()
-    db.refresh(device)
+    device_name = result.get("device_name", file.filename)
+
+    # Upsert: if same device name exists, overwrite it
+    existing = db.query(Device).filter(Device.name == device_name).first()
+    if existing:
+        # Delete old PDF from storage
+        if existing.pdf_filename and existing.pdf_filename != stored_name:
+            try:
+                delete_pdf(existing.pdf_filename)
+            except Exception:
+                pass
+        existing.manufacturer = result.get("manufacturer")
+        existing.device_type = result.get("device_type")
+        existing.freq_min_mhz = freq_min
+        existing.freq_max_mhz = freq_max
+        existing.package = result.get("package")
+        existing.package_size = result.get("package_size")
+        existing.pin_count = result.get("pin_count")
+        existing.enable_level = result.get("enable_level")
+        existing.switch_logic = result.get("switch_logic")
+        existing.bands = bands
+        existing.pdf_filename = stored_name
+        existing.pdf_url = pdf_url
+        existing.raw_specs = result
+        db.commit()
+        db.refresh(existing)
+        device = existing
+    else:
+        device = Device(
+            name=device_name,
+            manufacturer=result.get("manufacturer"),
+            device_type=result.get("device_type"),
+            freq_min_mhz=freq_min,
+            freq_max_mhz=freq_max,
+            package=result.get("package"),
+            package_size=result.get("package_size"),
+            pin_count=result.get("pin_count"),
+            enable_level=result.get("enable_level"),
+            switch_logic=result.get("switch_logic"),
+            bands=bands,
+            pdf_filename=stored_name,
+            pdf_url=pdf_url,
+            raw_specs=result,
+        )
+        db.add(device)
+        db.commit()
+        db.refresh(device)
 
     return {"id": device.id, "name": device.name, "device_type": device.device_type}
 
