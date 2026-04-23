@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import toast from "react-hot-toast";
 import { fetchDevices, deleteDevice, exportDevices, downloadDatasheet, getPreviewUrl, Device, Band, SwitchLogic, DeviceType } from "../api";
 import DeviceEditModal from "./DeviceEditModal";
+import HelpModal from "./HelpModal";
 
 const DEVICE_TYPES: (DeviceType | "全部")[] = ["全部", "PA", "LNA", "Filter", "Switch", "FEM", "Balun", "Splitter", "RF-Connector"];
 
@@ -324,6 +325,7 @@ export default function LibraryPage() {
   const [freqMin, setFreqMin] = useState<string>("");
   const [freqMax, setFreqMax] = useState<string>("");
   const [activePreset, setActivePreset] = useState<string>("");
+  const [showHelp, setShowHelp] = useState(false);
 
   const params = {
     device_type: activeType === "全部" ? undefined : activeType,
@@ -380,10 +382,17 @@ export default function LibraryPage() {
 
   return (
     <div className="space-y-5">
+      {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-800">器件库</h1>
         <div className="flex items-center gap-3">
           <span className="text-sm text-gray-500">{devices.length} 个器件</span>
+          <button
+            onClick={() => setShowHelp(true)}
+            className="text-sm border border-gray-300 hover:border-blue-400 text-gray-600 hover:text-blue-600 px-4 py-1.5 rounded-lg transition"
+          >
+            使用指南
+          </button>
           <button
             onClick={handleExport}
             className="text-sm bg-green-600 hover:bg-green-700 text-white px-4 py-1.5 rounded-lg transition"
